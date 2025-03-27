@@ -1,0 +1,1 @@
+The aim of this project is to geographically locate blogs, and plot them on a map for discovery geographically
