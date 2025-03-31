@@ -1,6 +1,59 @@
 import duckdb
 import csv
 
+ABOUT_PATTERNS = [
+    # English patterns
+    "/about",
+    "/about-me",
+    "/bio",
+    "/biography",
+    "/me",
+    "/who-am-i",
+    "/about/me",
+    "/hello",
+    "/introduction",
+    "/personal",
+    "/my-story",
+    "/my-journey",
+    "/about-the-author",
+    "/meet-me",
+    # Spanish patterns
+    "/sobre-mi",
+    "/quien-soy",
+    "/acerca-de-mi",
+    "/mi-biografia",
+    "/mi-historia",
+    "/biografia",
+    "/presentacion",
+    "/perfil",
+    "/conoceme",
+    "/hola",
+    # German patterns
+    "/ueber-mich",
+    "/über-mich",
+    "/ich",
+    "/meine-geschichte",
+    "/biografie",
+    "/das-bin-ich",
+    "/steckbrief",
+    "/vorstellung",
+    "/hallo",
+    "/personliches",
+    "/persönliches",
+    # French patterns
+    "/a-propos",
+    "/qui-suis-je",
+    "/biographie",
+    "/ma-bio",
+    "/mon-parcours",
+    "/me-connaitre",
+    "/me-connaître",
+    "/presentation",
+    "/présentation",
+    "/bonjour",
+    "/mon-histoire",
+]
+
 
 def find_about_pages_duckdb_fast(
     feeds_file,
@@ -43,36 +96,27 @@ def find_about_pages_duckdb_fast(
         """
         )
 
+        # Join ABOUT_PATTERNS for the regex pattern
+        pattern_regex = "|".join(
+            pattern.replace("/", "\\/") for pattern in ABOUT_PATTERNS
+        )
+
         # Faster query for urls-meta.csv.gz and create a temporary table
         fast_query = f"""
             CREATE TEMPORARY TABLE potential_about_pages AS
-            WITH meta_with_keywords AS (
-                SELECT meta.column0 AS url
-                FROM read_csv('{urls_meta_file}', header=false, compression='gzip') AS meta
-                WHERE meta.column0 LIKE '%/about%'
-                    OR meta.column0 LIKE '%/bio%'
-                    OR meta.column0 LIKE '%/contact%'
-                    OR meta.column0 LIKE '%/profile%'
-                    OR meta.column0 LIKE '%/me%'
-                    OR meta.column0 LIKE '%/who-am-i%'
-                    OR meta.column0 LIKE '%/meet-me%'
-                    OR meta.column0 LIKE '%/sobre-mi%'
-                    OR meta.column0 LIKE '%/quien-soy%'
-                    OR meta.column0 LIKE '%/ueber-mich%'
-                    OR meta.column0 LIKE '%/über-mich%'
-                    OR meta.column0 LIKE '%/a-propos%'
-                    OR meta.column0 LIKE '%/presentacion%'
-            ),
-            url_domains AS (
+            WITH url_domains AS (
                 SELECT
-                    url,
-                    REGEXP_EXTRACT(url, '^(?:https?:\/\/)?([^/]+)') AS extracted_domain
-                FROM meta_with_keywords
+                    column0 AS url,
+                    REGEXP_EXTRACT(column0, '^(?:https?:\/\/)?([^/]+)') AS extracted_domain
+                FROM read_csv('{urls_meta_file}', header=false, compression='gzip')
+                WHERE REGEXP_MATCHES(column0, '({pattern_regex})($|\\?)')
             )
             SELECT DISTINCT ud.url
             FROM url_domains ud
             INNER JOIN feeds f ON ud.extracted_domain = f.domain;
         """
+
+        # Execute the query
         con.execute(fast_query)
 
         # Write out the db as a parquet file if output_parquet_file is provided
@@ -102,7 +146,7 @@ if __name__ == "__main__":
     feeds_file = "../data/feeds.csv"  # Assuming feeds.csv is in the data directory
     urls_meta_file = "../data/urls-meta-23-11-02.csv.gz"  # Assuming this file is also in the data directory
     output_parquet_file = (
-        "../data/about_pages_3.parquet"  # Specify the output Parquet file path
+        "../data/about_pages.parquet"  # Specify the output Parquet file path
     )
 
     # Call the function to write to Parquet
